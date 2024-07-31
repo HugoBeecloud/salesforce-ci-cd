@@ -80,6 +80,11 @@ jobs:
             const fs = require('fs');
             const commentBody = fs.readFileSync('comment.md', 'utf8');
 
+            if (!commentBody) {
+              console.log('No body to comment')
+              return
+            }
+
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
