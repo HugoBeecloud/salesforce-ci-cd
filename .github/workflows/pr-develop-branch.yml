@@ -71,7 +71,7 @@ jobs:
           cd "changed-sources" &&
           sf scanner:run --format json --target '.' --category "Design,Best Practices,Performance" --outfile 'apexScanResults.json' &&
           cd .. 
-          node ./github/scripts/generate_comment.js > comment.md
+          node ./.github/scripts/generate_comment.js > comment.md
 
       - name: Comment on pull request
         uses: actions/github-script@v6
