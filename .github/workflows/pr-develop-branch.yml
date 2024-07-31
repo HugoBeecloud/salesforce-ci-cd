@@ -64,14 +64,14 @@ jobs:
       - name: "Criar um pacote de alterações"
         run: |
           mkdir changed-sources
-          sfdx sgd:source:delta --to "HEAD" --from "HEAD^" --output changed-sources/ --generate-delta --source force-app/
+          sf sgd:source:delta --to "HEAD" --from "HEAD^" --output changed-sources/ --generate-delta --source force-app/
 
       - name: "Scannear Código"
         run: |
           cd "changed-sources" &&
           sf scanner:run --format json --target '.' --category "Design,Best Practices,Performance" --outfile 'apexScanResults.json' &&
           cd .. 
-          node ./github/scripts/generate_comment.js > comment.md
+          node ./.github/scripts/generate_comment.js > comment.md
 
       - name: Comment on pull request
         uses: actions/github-script@v6
@@ -79,6 +79,11 @@ jobs:
           script: |
             const fs = require('fs');
             const commentBody = fs.readFileSync('comment.md', 'utf8');
+
+            if (!commentBody) {
+              console.log('No body to comment')
+              return
+            }
 
             github.rest.issues.createComment({
               issue_number: context.issue.number,
@@ -102,9 +107,9 @@ jobs:
       - name: "Enviar email"
         if: ${{vars.SEND_EMAILS == 'true'}}
         env: 
-          EMAIL_HOST: smtp.ethereal.email
-          EMAIL_PORT: 587
-          EMAIL_USER: coleman13@ethereal.email
-          EMAIL_PASSWORD: WY116MAvEVHEzqdgbe
+          EMAIL_HOST: ${{ vars.EMAIL_HOST}}
+          EMAIL_PORT: ${{ vars.PORT}}
+          EMAIL_USER: ${{ vars.EMAIL_USER}}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD}}
           INSTANCE_URL: ${{ secrets.SF_DEVELOP_INSTANCE_URL}}
         run: node .process/validate-deploy.js
