@@ -107,9 +107,9 @@ jobs:
       - name: "Enviar email"
         if: ${{vars.SEND_EMAILS == 'true'}}
         env: 
-          EMAIL_HOST: smtp.ethereal.email
-          EMAIL_PORT: 587
-          EMAIL_USER: coleman13@ethereal.email
-          EMAIL_PASSWORD: WY116MAvEVHEzqdgbe
+          EMAIL_HOST: ${{ vars.EMAIL_HOST}}
+          EMAIL_PORT: ${{ vars.PORT}}
+          EMAIL_USER: ${{ vars.EMAIL_USER}}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD}}
           INSTANCE_URL: ${{ secrets.SF_DEVELOP_INSTANCE_URL}}
         run: node .process/validate-deploy.js
