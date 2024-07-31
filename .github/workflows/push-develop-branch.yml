@@ -1,0 +1,68 @@
+# Unique name for this workflow
+name: Deploy integration branch to integration and staging/uat orgs
+
+# Definition when the workflow should run
+on:
+  push:
+    branches: [develop]
+    paths:
+      - "force-app/**"
+
+# Jobs to be executed
+# Trabalhos a serem executados
+jobs:
+  implantar-pacote-na-organizacao-de-develop:
+    runs-on: ubuntu-latest
+    if: ${{ github.actor != 'dependabot[bot]' }}
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: "Conferir código fonte"
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: "Ler corpo do PR e extrair classes de teste"
+        env:
+          PR_BODY: ${{ github.event.head_commit.message }}
+
+        run: |
+          echo $PR_BODY > ./.github/temp/pr_body.txt
+          node ./.github/scripts/parse_pr.js              
+          TESTS=$(cat ./.github/temp/testsToRun.txt)       
+          echo "APEX_TESTS=$TESTS" >> $GITHUB_ENV
+
+      - name: "Intalação Salesforce CLI"
+        run: npm install @salesforce/cli --global
+
+      - name: "Instalação do Git Delta"
+        run: echo y | sf plugins:install sfdx-git-delta
+
+      - name: "Instalação do Java"
+        run: |
+          sudo apt-get update
+          sudo apt install default-jdk
+
+      # Comando para obter URL de autenticação -> sfdx force:org:display -u my-scratch-org --verbose
+      - name: "Criar arquivo com URL de autenticação"
+        shell: bash
+        run: echo ${{ secrets.SF_DEVELOP_URL}} > ./SF_DEVELOP_URL.txt
+
+      - name: "Autenticar na Organização"
+        run: sf org login sfdx-url -f ./SF_DEVELOP_URL.txt --set-default --alias develop
+
+      - name: "Criar um pacote de alterações"
+        run: |
+          mkdir changed-sources
+          sfdx sgd:source:delta --to "HEAD" --from "HEAD^" --output changed-sources/ --generate-delta --source force-app/
+
+      - name: "Realizar implantação com testes especificos"
+        if: ${{ env.APEX_TESTS != 'all' }}
+        run: sf project deploy start --manifest "changed-sources/package/package.xml" --pre-destructive-changes changed-sources/destructiveChanges/destructiveChanges.xml --test-level RunSpecifiedTests --tests ${{env.APEX_TESTS}} --json
+
+      - name: "Realizar implantação com todos as classes de teste"
+        if: ${{ env.APEX_TESTS == 'all' }}
+        run: |
+          sf project deploy start --manifest "changed-sources/package/package.xml" --pre-destructive-changes changed-sources/destructiveChanges/destructiveChanges.xml --test-level RunLocalTests  --json

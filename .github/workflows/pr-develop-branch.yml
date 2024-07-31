@@ -1,0 +1,110 @@
+name: Validar PR na Organização Conectada a Branch de Desenvolvimento
+
+# Parametros de quando irá executor a ação
+on:
+  pull_request:
+    types: [opened, synchronize]
+    # Irá executar somente em um PR para a branch de "develop"
+    branches: [develop]
+    # Executar sempre que houver alterações no path abaixo
+    paths:
+      - "force-app/**"
+
+# Trabalhos a serem executados
+jobs:
+  validar-pacote-na-organizacao-de-develop:
+    runs-on: ubuntu-latest
+    if: ${{ github.actor != 'dependabot[bot]' }}
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+        
+      - name: "Conferir código fonte"
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: "Ler corpo do PR e extrair classes de teste"
+        env:
+          PR_BODY: ${{github.event.pull_request.body}}
+
+        run: |
+          echo $PR_BODY > ./.github/temp/pr_body.txt
+          node ./.github/scripts/parse_pr.js              
+          TESTS=$(cat ./.github/temp/testsToRun.txt)       
+          echo "APEX_TESTS=$TESTS" >> $GITHUB_ENV
+
+      - name: "Intalação NodeMailer"
+        if: ${{vars.SEND_EMAILS == 'true'}}
+        run: npm install nodemailer
+
+      - name: "Intalação Salesforce CLI"
+        run: npm install @salesforce/cli --global
+
+      - name: "Instalação Scanner"
+        run: sf plugins install @salesforce/sfdx-scanner
+
+      - name: "Instalação do Git Delta"
+        run: echo y | sf plugins install sfdx-git-delta
+
+      - name: "Instalação do Java"
+        run: |
+          sudo apt-get update
+          sudo apt install default-jdk
+
+      # Comando para obter URL de autenticação -> sfdx force:org:display -u my-scratch-org --verbose
+      - name: "Criar arquivo com URL de autenticação"
+        shell: bash
+        run: echo ${{ secrets.SF_DEVELOP_URL}} > ./SF_DEVELOP_URL.txt
+
+      - name: "Autenticar na Organização"
+        run: sf org login sfdx-url -f ./SF_DEVELOP_URL.txt --set-default --alias develop
+
+      - name: "Criar um pacote de alterações"
+        run: |
+          mkdir changed-sources
+          sfdx sgd:source:delta --to "HEAD" --from "HEAD^" --output changed-sources/ --generate-delta --source force-app/
+
+      - name: "Scannear Código"
+        run: |
+          cd "changed-sources" &&
+          sf scanner:run --format json --target '.' --category "Design,Best Practices,Performance" --outfile 'apexScanResults.json' &&
+          cd .. 
+          node ./github/scripts/generate_comment.js > comment.md
+
+      - name: Comment on pull request
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            const commentBody = fs.readFileSync('comment.md', 'utf8');
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: commentBody
+            })
+
+      - name: "Realizar validação com testes especificos"
+        if: ${{ env.APEX_TESTS != 'all' }}
+        run: sf project deploy validate --manifest "changed-sources/package/package.xml" --pre-destructive-changes changed-sources/destructiveChanges/destructiveChanges.xml --test-level RunSpecifiedTests --tests ${{env.APEX_TESTS}} --json
+        continue-on-error: true
+
+        # sf project deploy validate --manifest "manifest/package.xml" --test-level RunLocalTests  --json > deploy.json
+      - name: "Realizar validação com todos as classes de teste"
+        if: ${{ env.APEX_TESTS == 'all' }}
+        run: |
+          sf project deploy validate --manifest "changed-sources/package/package.xml" --pre-destructive-changes changed-sources/destructiveChanges/destructiveChanges.xml --test-level RunLocalTests  --json > deploy.json
+        continue-on-error: true
+
+      - name: "Enviar email"
+        if: ${{vars.SEND_EMAILS == 'true'}}
+        env: 
+          EMAIL_HOST: smtp.ethereal.email
+          EMAIL_PORT: 587
+          EMAIL_USER: coleman13@ethereal.email
+          EMAIL_PASSWORD: WY116MAvEVHEzqdgbe
+          INSTANCE_URL: ${{ secrets.SF_DEVELOP_INSTANCE_URL}}
+        run: node .process/validate-deploy.js
