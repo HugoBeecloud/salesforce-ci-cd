@@ -35,11 +35,11 @@ jobs:
           TESTS=$(cat ./.github/temp/testsToRun.txt)       
           echo "APEX_TESTS=$TESTS" >> $GITHUB_ENV
 
-      - name: "Intalação NodeMailer"
+      - name: "Instalação NodeMailer"
         if: ${{vars.SEND_EMAILS == 'true'}}
         run: npm install nodemailer
 
-      - name: "Intalação Salesforce CLI"
+      - name: "Instalação Salesforce CLI"
         run: npm install @salesforce/cli --global
 
       - name: "Instalação Scanner"
