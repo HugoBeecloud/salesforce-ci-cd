@@ -34,7 +34,7 @@ jobs:
           TESTS=$(cat ./.github/temp/testsToRun.txt)       
           echo "APEX_TESTS=$TESTS" >> $GITHUB_ENV
 
-      - name: "Intalação Salesforce CLI"
+      - name: "Instalação Salesforce CLI"
         run: npm install @salesforce/cli --global
 
       - name: "Instalação do Git Delta"
